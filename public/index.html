@@ -8,7 +8,7 @@
     content="width=device-width, initial-scale=1.0"
   >
 
-  <title>Loup-Garou V7</title>
+  <title>Loup-Garou V0.32</title>
 
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -23,6 +23,7 @@
       <p>Le jeu est temporairement inaccessible.</p>
       <div id="maintenanceTimer" class="maintenance-timer">0 min 0 seconde</div>
       <p class="maintenance-small">Merci de patienter pendant la maintenance.</p>
+      <div class="dino-game" aria-label="Mini-jeu dinosaure pendant la maintenance"><div class="dino-score">Score : <b id="dinoScore">0</b></div><div id="dinoTrack" class="dino-track" tabindex="0" role="button" aria-label="Appuie sur espace ou touche ici pour sauter"><span id="dinoPlayer" class="dino-player">🦖</span><span id="dinoObstacle" class="dino-obstacle">🌵</span></div><button id="dinoJump" class="main-button" type="button">Sauter</button><small>Appuie sur Espace, ↑ ou le bouton pour sauter.</small></div>
     </div>
   </section>
 
@@ -35,11 +36,10 @@
 
     <div class="auth-box">
 
-      <h1>🐺 Loup-Garou V7</h1>
+      <h1>🐺 Loup-Garou V0.32</h1>
 
-      <p class="subtitle">
-        Entre dans le village...
-      </p>
+      <p class="subtitle">Entre dans le village...</p>
+      <div class="early-access-login"><div class="early-access-entry"><input id="earlyAccessCode" maxlength="80" placeholder="Code d’accès anticipé" aria-label="Code d’accès anticipé"><button id="earlyAccessSubmit" type="button" class="secondary-button">Accéder</button><button id="earlyAccessInfo" type="button" class="info-button" aria-label="Informations sur l’accès anticipé">!</button></div><p id="earlyAccessMessage" role="status"></p><div id="earlyAccessInfoText" class="early-access-info hidden">Un tirage au sort mensuel peut sélectionner 10 comptes pour recevoir un code d’accès anticipé. Les créateurs de contenu ayant publié plus de 5 vidéos peuvent également demander l’accès. Les coordonnées ne sont pas collectées par ce panneau.</div></div>
 
       <div class="auth-tabs">
 
@@ -277,6 +277,8 @@
           <b id="playerCoins">0</b>
         </span>
 
+        <span class="silver-shards-stat" title="Éclats d’argent">💎 <b id="playerSilverShards">0</b></span>
+
         <span>
           🏆
           <b id="playerTrophies">0</b>
@@ -316,6 +318,11 @@
       </button>
 
 
+      <button id="profileButton" class="menu-button" type="button">👤<span>Profil</span></button>
+      <button id="collectionButton" class="menu-button" type="button">🧬<span>Collection</span></button>
+      <button id="passButton" class="menu-button" type="button">🎟️<span>Pass</span></button>
+      <button id="eventsButton" class="menu-button" type="button">🎪<span>Événements</span></button>
+
       <button
         id="classesButton"
         class="menu-button"
@@ -332,7 +339,7 @@
         type="button"
       >
         📜
-        <span>Quêtes</span>
+        <span>Quêtes <b id="questsAlert" class="quests-alert hidden" aria-label="Quête terminée à récupérer">!</b></span>
       </button>
 
 
@@ -557,6 +564,14 @@
     </section>
 
 
+    <section id="passPage" class="page hidden pass-page">
+      <div class="pass-heading"><div><p class="eyebrow">SAISON V0.32</p><h2>Pass de récompenses</h2><p>Gagne de l’XP en jouant pour débloquer les paliers.</p></div><div class="pass-ticket" aria-label="Ticket doré animé"><span>✦</span><strong>PASS</strong><small>V0.32</small></div></div>
+      <div class="pass-summary"><div><span>Ton niveau</span><strong id="passLevel">1</strong></div><div><span>XP actuelle</span><strong id="passXp">0</strong></div><div><span>Éclats d’argent</span><strong id="passShards">💚 0</strong></div></div>
+      <div class="pass-progress-track"><div id="passProgressFill" class="pass-progress-fill"></div></div><p id="passProgressLabel" class="pass-progress-label">0 / 500 XP vers le prochain palier</p>
+      <div class="pass-purchase-row"><button id="buyPassButton" class="main-button">Débloquer le Pass</button><button id="buyPremiumPassButton" class="premium-button">Pass premium</button><button id="passInfoButton" class="info-button" aria-label="Voir toutes les récompenses">!</button></div>
+      <div class="pass-lane-tabs" role="group" aria-label="Choisir les récompenses du Pass"><button type="button" class="pass-lane-tab active" data-pass-lane="free">🎁 Pass gratuit</button><button type="button" class="pass-lane-tab" data-pass-lane="paid">🌟 Pass</button><button type="button" class="pass-lane-tab" data-pass-lane="premium">👑 Pass premium</button></div><div id="passRewards" class="pass-rewards-grid"></div><p id="passMessage" role="status"></p>
+    </section>
+
     <!-- ===================================
          QUÊTES
     ==================================== -->
@@ -773,6 +788,9 @@
     </section>
 
 
+    <section id="profilePage" class="page hidden"><h2>👤 Mon profil</h2><div class="profile-dashboard"><div class="profile-identity"><div id="profilePageIcon" class="profile-page-icon">🐺</div><div><h3 id="profilePageName">Joueur</h3><p id="profilePageIdentifier">LG-...</p><p id="profilePageTitle">Nouveau Villageois</p></div></div><div class="profile-stats-grid"><div>⭐ Niveau<strong id="profileStatLevel">1</strong></div><div>✨ XP<strong id="profileStatXp">0</strong></div><div>🪙 Pièces<strong id="profileStatCoins">0</strong></div><div>💎 Éclats d’argent<strong id="profileStatShards">0</strong></div><div>🏆 Trophées<strong id="profileStatTrophies">0</strong></div><div>🎮 Parties jouées<strong id="profileStatPlayed">0</strong></div><div>🏆 Parties gagnées<strong id="profileStatWon">0</strong></div><div>🧬 Personnages<strong id="profileStatCharacters">0</strong></div></div><h3>🏷️ Choisir mon titre</h3><p>Choisis un titre que tu as débloqué.</p><div id="profileTitles" class="cards-list"></div><h3>🔎 Rechercher un joueur</h3><div class="promo-redeem-row"><input id="publicPlayerSearch" placeholder="Pseudo du joueur"><button id="publicPlayerSearchButton" class="main-button" type="button">Rechercher</button></div><div id="publicPlayerResult"></div><p id="profileMessage" role="status"></p></div></section>
+    <section id="eventsPage" class="page hidden"><h2>🎪 Événements du village</h2><p>Événements créés par l’administration, avec compte à rebours et récompenses.</p><div id="eventsList" class="cards-list">Chargement des événements…</div></section>
+
     <!-- ===================================
          LUNE DE SANG
     ==================================== -->
@@ -784,7 +802,7 @@
     </section>
 
     <section id="updatesPage" class="page hidden">
-      <h2>📝 Mises à jour</h2>
+      <h2>📝 Mises à jour</h2><h3>🔗 Liens utiles</h3><div id="infoLinksPublic" class="cards-list"></div>
       <div id="updatesList" class="cards-list">Chargement...</div>
     </section>
 
@@ -823,8 +841,15 @@
       <h2>👑 Administration</h2>
 
 
+      <div class="admin-card full-admin-only pass-admin-card"><h3>🎟️ Configuration du Pass (sans JSON)</h3><p>Règle les prix et l’XP nécessaire. Les prix sont en éclats d’argent.</p><div class="admin-pass-grid"><label>Prix du Pass<input id="adminPassPrice" type="number" min="0" value="1200"></label><label>Prix du Pass premium<input id="adminPremiumPrice" type="number" min="0" value="2400"></label><label>XP par palier<input id="adminPassXp" type="number" min="100" value="500"></label></div><h4>Récompenses des paliers</h4><p>Choisis un palier et modifie ses récompenses en français.</p><div class="admin-pass-grid"><label>Palier à modifier<input id="adminRewardTier" type="number" min="1" value="1"></label><label>Pièces — gratuit<input id="adminFreeCoins" type="number" min="0" value="50"></label><label>XP — gratuit<input id="adminFreeXp" type="number" min="0" value="0"></label><label>Éclats — gratuit<input id="adminFreeShards" type="number" min="0" value="0"></label><label>Pièces — Pass<input id="adminPaidCoins" type="number" min="0" value="100"></label><label>XP — Pass<input id="adminPaidXp" type="number" min="0" value="0"></label><label>Éclats — Pass<input id="adminPaidShards" type="number" min="0" value="5"></label><label>Pièces — Premium<input id="adminPremiumCoins" type="number" min="0" value="150"></label><label>XP — Premium<input id="adminPremiumXp" type="number" min="0" value="0"></label><label>Éclats — Premium<input id="adminPremiumShards" type="number" min="0" value="10"></label></div><button id="adminAddPassTier" class="secondary-button" type="button">Ajouter / mettre à jour ce palier</button><div id="adminPassTierList" class="cards-list"></div><textarea id="adminPassRewardsJson" class="hidden" aria-hidden="true"></textarea><button id="adminSavePass" class="main-button" type="button">Enregistrer le Pass</button><p id="adminPassMessage" role="status"></p><h4>Accès anticipé</h4><div class="admin-pass-grid"><label>Code d’accès<input id="adminEarlyCode" maxlength="80" placeholder="Code à partager"></label><label>Lien de la prochaine mise à jour<input id="adminEarlyUrl" type="url" placeholder="https://..."></label></div><label class="admin-check"><input id="adminEarlyEnabled" type="checkbox" checked> Activer l’accès anticipé</label><button id="adminSaveEarly" class="secondary-button" type="button">Enregistrer l’accès anticipé</button><p id="adminEarlyMessage" role="status"></p></div>
+
       <!-- RECHERCHE JOUEUR -->
 
+      <div class="admin-card full-admin-only"><h3>💎 Donner des éclats d’argent</h3><p>Ajoute des éclats au compte d’un joueur.</p><div class="admin-pass-grid"><label>Pseudo du joueur<input id="adminShardTarget" maxlength="40" placeholder="Pseudo exact"></label><label>Nombre d’éclats à ajouter<input id="adminShardAmount" type="number" min="1" value="100"></label></div><button id="adminGiveShards" class="main-button" type="button">Donner les éclats</button><p id="adminShardMessage" role="status"></p></div>
+      <div class="admin-card full-admin-only"><h3>🎁 Boutique et packs</h3><p>Tout se règle ici en français : crée un article ou un pack, choisis sa rareté, son prix et ses récompenses.</p><div class="admin-pass-grid"><label>Nom de l’article / pack<input id="adminItemName" maxlength="80" placeholder="Pack du village"></label><label>Type<select id="adminItemType"><option value="article">Article de boutique</option><option value="rare">Pack rare</option><option value="super_rare">Pack super rare</option><option value="epique">Pack épique</option><option value="legendaire">Pack légendaire</option><option value="mythique">Pack mythique</option></select></label><label>Prix en pièces<input id="adminItemPrice" type="number" min="0" value="250"></label><label>Pièces reçues<input id="adminItemCoins" type="number" min="0" value="0"></label><label>XP reçue<input id="adminItemXp" type="number" min="0" value="0"></label><label>Éclats reçus<input id="adminItemShards" type="number" min="0" value="0"></label><label>Personnage à débloquer (ID de classe)<input id="adminItemClass" placeholder="Ex. wolf_guard"></label><label>Titre à débloquer<input id="adminItemTitle" maxlength="60" placeholder="Titre facultatif"></label><label>Description<input id="adminItemDescription" maxlength="300" placeholder="Contenu du pack"></label></div><button id="adminAddShopItem" class="main-button" type="button">Ajouter cet article / pack</button><button id="adminLoadShop" class="secondary-button" type="button">Actualiser la liste</button><div id="adminShopItemsList" class="cards-list"></div><textarea id="adminShopJson" class="hidden" aria-hidden="true"></textarea><button id="adminSaveShop" class="main-button" type="button">Enregistrer les changements</button><p id="adminShopMessage" role="status"></p></div>
+      <div class="admin-card full-admin-only"><h3>🎪 Événements</h3><p>Crée un événement avec dates, points par partie et récompenses par palier.</p><div class="admin-pass-grid"><label>Nom<input id="adminEventName" maxlength="80" placeholder="Festival du village"></label><label>Début<input id="adminEventStart" type="datetime-local"></label><label>Fin<input id="adminEventEnd" type="datetime-local"></label><label>Points par partie<input id="adminEventPoints" type="number" min="0" value="10"></label></div><div class="admin-pass-grid"><label>Palier de points<input id="adminEventRewardPoints" type="number" min="1" value="100"></label><label>Pièces à gagner<input id="adminEventRewardCoins" type="number" min="0" value="100"></label><label>XP à gagner<input id="adminEventRewardXp" type="number" min="0" value="0"></label><label>Éclats à gagner<input id="adminEventRewardShards" type="number" min="0" value="0"></label></div><button id="adminAddEventReward" class="secondary-button" type="button">Ajouter le palier de récompense</button><div id="adminEventRewardsList" class="cards-list"></div><textarea id="adminEventRewards" class="hidden" aria-hidden="true"></textarea><button id="adminSaveEvent" class="main-button" type="button">Enregistrer l’événement</button><p id="adminEventMessage" role="status"></p><div id="adminEventsList"></div></div>
+      <div class="admin-card full-admin-only"><h3>🧬 Donner un personnage</h3><p>Le personnage sera ajouté directement à la collection du joueur, sans modifier ses classes.</p><div class="admin-pass-grid"><label>Pseudo du joueur<input id="adminCharacterTarget" placeholder="Pseudo exact"></label><label>Personnage<select id="adminCharacterId"></select></label></div><button id="adminGiveCharacter" class="main-button" type="button">Donner le personnage</button><p id="adminCharacterMessage"></p></div>
+      <div class="admin-card full-admin-only"><h3>🔗 Informations — ajouter un lien</h3><div class="admin-pass-grid"><label>Texte affiché<input id="adminInfoLinkLabel" placeholder="Site officiel"></label><label>Adresse du lien<input id="adminInfoLinkUrl" type="url" placeholder="https://..."></label></div><button id="adminAddInfoLink" class="main-button" type="button">Ajouter le lien</button><p id="adminInfoLinkMessage"></p><div id="adminInfoLinksList"></div></div>
       <div class="admin-card admin-dashboard-card">
 
         <h3>📊 Tableau de bord administrateur</h3>

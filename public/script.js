@@ -1,5 +1,5 @@
 /* =====================================
-   LOUP-GAROU V7 - SCRIPT CLIENT
+   LOUP-GAROU V0.32 - SCRIPT CLIENT
 ===================================== */
 
 const $ = (id) => document.getElementById(id);
@@ -25,6 +25,9 @@ const ADMIN_PSEUDO = "creator2026";
 
 const pages = [
   "gameLobby",
+  "profilePage",
+  "eventsPage",
+  "passPage",
   "classesPage",
   "questsPage",
   "friendsPage",
@@ -89,7 +92,39 @@ $("playButton")?.addEventListener("click", () => {
   loadRooms();
 });
 
+let collectionOnlyOwned=false;
+$("collectionButton")?.addEventListener("click", async () => { collectionOnlyOwned=true; openPage("classesPage"); const h=$("classesPage")?.querySelector("h2"); if(h)h.textContent="🧬 Ma collection de personnages"; const p=$("classesPage")?.querySelector("p"); if(p)p.textContent="30 personnages à collectionner — indépendants des classes de gameplay."; await loadCharacterCollection(); });
+$("passButton")?.addEventListener("click", async()=>{openPage("passPage");await loadSeasonPass();});
+async function loadSeasonPass(){if(!currentUser)return;const c=$("passRewards");if(c)c.innerHTML="<p>Chargement des récompenses…</p>";try{const d=await apiJson(`/api/pass?pseudo=${encodeURIComponent(currentUser.pseudo)}`);renderSeasonPass(d);}catch(e){if(c)c.textContent="Impossible de charger le Pass : "+e.message;}}
+let selectedPassLane = "free";
+function renderSeasonPass(d){currentPassData=d;const cfg=d.config||{};$("passLevel").textContent=String(currentUser?.level||1);$("passXp").textContent=String(d.xp||0);$("passShards").textContent="💎 "+String(d.silverShards||0);const pct=Math.min(100,Math.round((d.xpIntoTier||0)/Math.max(1,d.xpPerTier||500)*100));$("passProgressFill").style.width=pct+"%";$("passProgressLabel").textContent=`${d.xpIntoTier||0} / ${d.xpPerTier||500} XP vers le prochain palier`;$("buyPassButton").textContent=`Débloquer le Pass · 💎 ${cfg.price||0}`;$("buyPremiumPassButton").textContent=`Pass premium · 💎 ${cfg.premiumPrice||0}`;const c=$("passRewards");c.innerHTML="";(d.rewards||[]).forEach(r=>{const tier=Number(r.tier);const card=document.createElement("article");card.className="pass-reward-card";const lane=selectedPassLane;const reward=r[lane]||r.free||{};const key=lane+":"+tier;const claimed=(d.claimed||[]).includes(key);const laneLocked=lane!=="free"&&!(lane==="paid"? ["paid","premium"].includes(d.ownedPass):d.ownedPass==="premium");card.innerHTML=`<div class="pass-tier">PALIER ${tier}</div><div class="pass-reward-icon">🎁</div><strong>${reward.coins||0} pièces</strong><small>${reward.xp||0} XP · ${reward.silverShards||0} éclats</small><button class="secondary-button pass-claim" data-tier="${tier}" data-lane="${lane}" ${!r.unlocked||claimed||laneLocked?"disabled":""}>${claimed?"Récupérée":!r.unlocked?"🔒 XP insuffisante":laneLocked?"🔒 Pass requis":"Récupérer"}</button>`;c.appendChild(card);});c.querySelectorAll(".pass-claim").forEach(b=>b.addEventListener("click",async()=>{try{const out=await apiJson("/api/pass/claim",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,tier:Number(b.dataset.tier),lane:b.dataset.lane})});currentUser=out.user;saveCurrentUser();updateProfile();renderSeasonPass(out.pass);$("passMessage").textContent=out.message;}catch(e){$("passMessage").textContent=e.message;}}));}
+async function buySeasonPass(type){try{const d=await apiJson("/api/pass/buy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,type})});currentUser=d.user;saveCurrentUser();updateProfile();renderSeasonPass(d.pass);$("passMessage").textContent=d.message;}catch(e){$("passMessage").textContent=e.message;}}
+$("buyPassButton")?.addEventListener("click",()=>buySeasonPass("paid"));$("buyPremiumPassButton")?.addEventListener("click",()=>buySeasonPass("premium"));$("passInfoButton")?.addEventListener("click",()=>$("passRewards")?.scrollIntoView({behavior:"smooth",block:"start"}));
+let currentPassData = null;
+document.querySelectorAll("[data-pass-lane]").forEach(button=>button.addEventListener("click",()=>{selectedPassLane=button.dataset.passLane;document.querySelectorAll("[data-pass-lane]").forEach(b=>b.classList.toggle("active",b===button));if(currentPassData)renderSeasonPass(currentPassData);}));
+$("earlyAccessInfo")?.addEventListener("click",()=>$("earlyAccessInfoText")?.classList.toggle("hidden"));
+$("earlyAccessSubmit")?.addEventListener("click",async()=>{const msg=$("earlyAccessMessage");try{const d=await apiJson("/api/early-access/check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:$("earlyAccessCode")?.value||""})});msg.textContent=d.message;if(d.url)window.location.href=d.url;else msg.textContent+=" Aucun lien n’a été configuré.";}catch(e){msg.textContent=e.message;}});
+let adminPassRewards=[];
+function renderAdminPassTiers(){const c=$("adminPassTierList");if(!c)return;c.innerHTML=adminPassRewards.map(r=>`<div class="admin-user-row"><div><strong>Palier ${r.tier}</strong><small>Gratuit : ${r.free.coins} pièces, ${r.free.xp} XP, ${r.free.silverShards} éclats · Pass : ${r.paid.coins} pièces · Premium : ${r.premium.coins} pièces</small></div><button class="secondary-button" data-edit-tier="${r.tier}">Modifier</button><button class="danger-button" data-delete-tier="${r.tier}">Supprimer</button></div>`).join("")||"<p>Aucun palier configuré.</p>";c.querySelectorAll("[data-edit-tier]").forEach(b=>b.onclick=()=>{const r=adminPassRewards.find(x=>x.tier===Number(b.dataset.editTier));if(!r)return;$("adminRewardTier").value=r.tier;for(const lane of ["free","paid","premium"])for(const field of ["coins","xp","silverShards"]){const id=`admin${lane[0].toUpperCase()+lane.slice(1)}${field==="silverShards"?"Shards":field[0].toUpperCase()+field.slice(1)}`;const el=$(id);if(el)el.value=r[lane][field]||0;}});c.querySelectorAll("[data-delete-tier]").forEach(b=>b.onclick=()=>{adminPassRewards=adminPassRewards.filter(x=>x.tier!==Number(b.dataset.deleteTier));renderAdminPassTiers();});}
+function passRewardFromForm(lane){return {coins:Number($(`admin${lane[0].toUpperCase()+lane.slice(1)}Coins`)?.value||0),xp:Number($(`admin${lane[0].toUpperCase()+lane.slice(1)}Xp`)?.value||0),silverShards:Number($(`admin${lane[0].toUpperCase()+lane.slice(1)}Shards`)?.value||0)}}
+async function loadPassAdminConfig(){try{const cfg=await apiJson("/api/pass?pseudo="+encodeURIComponent(currentUser.pseudo));$("adminPassPrice").value=cfg.config.price||0;$("adminPremiumPrice").value=cfg.config.premiumPrice||0;$("adminPassXp").value=cfg.config.xpPerTier||500;adminPassRewards=cfg.config.rewards||[];$("adminPassRewardsJson").value=JSON.stringify(adminPassRewards);renderAdminPassTiers();}catch(e){$("adminPassMessage").textContent=e.message;}}
+$("adminAddPassTier")?.addEventListener("click",()=>{const tier=Math.max(1,Number($("adminRewardTier").value||1));const r={tier,free:passRewardFromForm("free"),paid:passRewardFromForm("paid"),premium:passRewardFromForm("premium")};const i=adminPassRewards.findIndex(x=>Number(x.tier)===tier);if(i>=0)adminPassRewards[i]=r;else adminPassRewards.push(r);adminPassRewards.sort((a,b)=>a.tier-b.tier);renderAdminPassTiers();});
+$("adminSavePass")?.addEventListener("click",async()=>{try{const d=await apiJson("/api/admin/pass-config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser.pseudo,price:Number($("adminPassPrice").value),premiumPrice:Number($("adminPremiumPrice").value),xpPerTier:Number($("adminPassXp").value),rewards:adminPassRewards})});$("adminPassMessage").textContent=d.message;}catch(e){$("adminPassMessage").textContent=e.message;}});
+let adminShopItems=[];
+function renderAdminShopItems(){const c=$("adminShopItemsList");if(!c)return;c.innerHTML=adminShopItems.map((x,i)=>`<div class="admin-user-row"><div><strong>${esc(x.name)}</strong><small>${esc(({rare:"Pack rare",super_rare:"Pack super rare",epique:"Pack épique",legendaire:"Pack légendaire",mythique:"Pack mythique"})[x.type]||"Article")} · ${x.price} pièces · personnage : ${esc(x.reward?.classId||"aucun")}</small></div><button class="secondary-button" data-shop-edit="${i}">Modifier</button><button class="danger-button" data-shop-delete="${i}">Supprimer</button></div>`).join("")||"<p>Aucun article personnalisé. Ajoute ton premier pack ci-dessus.</p>";c.querySelectorAll("[data-shop-edit]").forEach(b=>b.onclick=()=>{const x=adminShopItems[Number(b.dataset.shopEdit)];$("adminItemName").value=x.name;$("adminItemType").value=x.type||"article";$("adminItemPrice").value=x.price;$("adminItemCoins").value=x.reward?.coins||0;$("adminItemXp").value=x.reward?.xp||0;$("adminItemShards").value=x.reward?.silverShards||0;$("adminItemClass").value=x.reward?.classId||"";$("adminItemTitle").value=x.reward?.title||"";$("adminItemDescription").value=x.description||"";$("adminAddShopItem").dataset.editIndex=b.dataset.shopEdit;});c.querySelectorAll("[data-shop-delete]").forEach(b=>b.onclick=()=>{adminShopItems.splice(Number(b.dataset.shopDelete),1);renderAdminShopItems();});}
+async function loadAdminShopItems(){try{const d=await apiJson("/api/admin/shop-config?adminPseudo="+encodeURIComponent(currentUser.pseudo));adminShopItems=d.items||[];renderAdminShopItems();}catch(e){$("adminShopMessage").textContent=e.message;}}
+$("adminLoadShop")?.addEventListener("click",loadAdminShopItems);
+$("adminAddShopItem")?.addEventListener("click",()=>{const name=$("adminItemName").value.trim();if(!name){$("adminShopMessage").textContent="Donne un nom à cet article.";return;}const type=$("adminItemType").value;const x={id:(name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")||"article")+"_"+Date.now(),name,type,price:Number($("adminItemPrice").value||0),description:$("adminItemDescription").value,reward:{coins:Number($("adminItemCoins").value||0),xp:Number($("adminItemXp").value||0),silverShards:Number($("adminItemShards").value||0),classId:$("adminItemClass").value.trim(),title:$("adminItemTitle").value.trim()}};const ix=$("adminAddShopItem").dataset.editIndex;if(ix!==undefined){x.id=adminShopItems[Number(ix)].id;adminShopItems[Number(ix)]=x;delete $("adminAddShopItem").dataset.editIndex;}else adminShopItems.push(x);renderAdminShopItems();$("adminShopMessage").textContent="Article ajouté à la liste. Clique sur Enregistrer les changements pour l’appliquer.";});
+$("adminSaveShop")?.addEventListener("click",async()=>{try{const d=await apiJson("/api/admin/shop-config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser.pseudo,items:adminShopItems})});adminShopItems=d.items||adminShopItems;renderAdminShopItems();$("adminShopMessage").textContent=d.message;}catch(e){$("adminShopMessage").textContent=e.message;}});
+let adminEventRewards=[];function renderAdminEventRewards(){const c=$("adminEventRewardsList");if(c)c.innerHTML=adminEventRewards.map((r,i)=>`<div class="admin-user-row"><strong>${r.points} points → ${r.coins} pièces, ${r.xp} XP, ${r.silverShards} éclats</strong><button class="danger-button" data-event-reward-delete="${i}">Supprimer</button></div>`).join("")||"<p>Aucun palier de récompense ajouté.</p>";c?.querySelectorAll("[data-event-reward-delete]").forEach(b=>b.onclick=()=>{adminEventRewards.splice(Number(b.dataset.eventRewardDelete),1);renderAdminEventRewards();});}
+$("adminAddEventReward")?.addEventListener("click",()=>{adminEventRewards.push({points:Number($("adminEventRewardPoints").value||1),coins:Number($("adminEventRewardCoins").value||0),xp:Number($("adminEventRewardXp").value||0),silverShards:Number($("adminEventRewardShards").value||0)});adminEventRewards.sort((a,b)=>a.points-b.points);renderAdminEventRewards();});
+$("adminSaveEvent")?.addEventListener("click",async()=>{try{const d=await apiJson("/api/admin/event-config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser.pseudo,name:$("adminEventName").value,startAt:$("adminEventStart").value?new Date($("adminEventStart").value).getTime():Date.now(),endAt:$("adminEventEnd").value?new Date($("adminEventEnd").value).getTime():0,pointsPerGame:Number($("adminEventPoints").value),rewards:adminEventRewards})});$("adminEventMessage").textContent=d.message;loadEventsPage();}catch(e){$("adminEventMessage").textContent=e.message;}});
+$("adminSaveEarly")?.addEventListener("click",async()=>{try{const d=await apiJson("/api/admin/early-access",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser.pseudo,enabled:$("adminEarlyEnabled").checked,code:$("adminEarlyCode").value,url:$("adminEarlyUrl").value})});$("adminEarlyMessage").textContent=d.message;}catch(e){$("adminEarlyMessage").textContent=e.message;}});
+
 $("classesButton")?.addEventListener("click", async () => {
+  collectionOnlyOwned=false;
+  const h=$("classesPage")?.querySelector("h2"); if(h)h.textContent="🐺 Classes";
+  const p=$("classesPage")?.querySelector("p"); if(p)p.textContent="Achète et équipe tes classes.";
   openPage("classesPage");
 
   await loadClasses();
@@ -452,6 +487,10 @@ function updateProfile() {
       currentUser.coins || 0;
   }
 
+  if ($("playerSilverShards")) {
+    $("playerSilverShards").textContent = Number(currentUser.silverShards || 0).toLocaleString("fr-FR");
+  }
+
   if ($("playerTrophies")) {
     $("playerTrophies").textContent =
       currentUser.trophies || 0;
@@ -486,6 +525,22 @@ function updateProfile() {
   syncHalloweenMusic(halloweenActive || hasPersonalEvent("halloween"));
   updateXpBar();
 }
+
+
+function renderProfilePage(){
+  if(!currentUser)return;
+  const set=(id,value)=>{const el=$(id);if(el)el.textContent=String(value??0);};
+  set("profilePageIcon",currentUser.icon||"🐺");set("profilePageName",currentUser.pseudo||"Joueur");set("profilePageIdentifier",currentUser.identifier||"LG-...");set("profilePageTitle",`Titre équipé : ${currentUser.equippedTitle||currentUser.title||"Nouveau Villageois"}`);
+  set("profileStatLevel",currentUser.level||1);set("profileStatXp",currentUser.xp||0);set("profileStatCoins",currentUser.coins||0);set("profileStatShards",currentUser.silverShards||0);set("profileStatTrophies",currentUser.trophies||0);set("profileStatPlayed",currentUser.gamesPlayed||0);set("profileStatWon",currentUser.gamesWon||0);set("profileStatCharacters",(currentUser.collectionCharacters||[]).length);
+  const c=$("profileTitles");if(!c)return;const titles=Array.isArray(currentUser.titles)?currentUser.titles:[currentUser.title||"Nouveau Villageois"];
+  c.innerHTML=titles.map(t=>`<div class="admin-user-row"><strong>🏷️ ${esc(t)}</strong><button class="secondary-button profile-equip-title" data-title="${esc(t)}" ${t===(currentUser.equippedTitle||currentUser.title)?"disabled":""}>${t===(currentUser.equippedTitle||currentUser.title)?"Titre équipé":"Équiper"}</button></div>`).join("")||"<p>Aucun titre débloqué.</p>";
+  c.querySelectorAll(".profile-equip-title").forEach(b=>b.onclick=async()=>{try{const d=await apiJson("/api/titles/equip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,title:b.dataset.title})});currentUser=d.user;saveCurrentUser();updateProfile();renderProfilePage();$("profileMessage").textContent="Titre équipé !";}catch(e){$("profileMessage").textContent=e.message;}});
+}
+$("profileButton")?.addEventListener("click",()=>{openPage("profilePage");renderProfilePage();});
+async function loadCharacterCollection(){const box=$("classesList");if(!box||!currentUser)return;try{const d=await apiJson(`/api/collection?pseudo=${encodeURIComponent(currentUser.pseudo)}`);box.innerHTML=`<p class="collection-progress">${d.ownedCount}/30 personnages débloqués</p><div class="collection-grid">${d.catalog.map(c=>{const owned=d.owned.includes(c.id);return `<article class="class-card ${owned?"collection-owned":"collection-locked"}"><div class="collection-character-art">${c.emoji}</div><h3>${esc(c.name)}</h3><p><b>${esc(c.rarity)}</b> · 🪙 ${c.price.toLocaleString("fr-FR")} pièces</p><small>🎲 ${c.dropPercent.toFixed(2).replace(".",",")}% de chance dans un pack ${esc(c.rarity.toLowerCase())}</small><p>${owned?"✅ Débloqué":"🔒 Non obtenu"}</p></article>`}).join("")}</div>`;}catch(e){box.textContent=e.message;}}
+async function searchPublicPlayer(){const input=$("publicPlayerSearch"),out=$("publicPlayerResult");if(!input||!out)return;const name=input.value.trim();if(!name){out.textContent="Entre un pseudo.";return;}out.textContent="Recherche…";try{const d=await apiJson(`/api/players/${encodeURIComponent(name)}`);const u=d.user;out.innerHTML=`<div class="public-player-card"><h3>${esc(u.icon||"🐺")} ${esc(u.pseudo)}</h3><p>${esc(u.equippedTitle||u.title||"Nouveau Villageois")}</p><div class="profile-stats-grid"><div>Niveau<strong>${u.level||1}</strong></div><div>XP<strong>${u.xp||0}</strong></div><div>Pièces<strong>${u.coins||0}</strong></div><div>Éclats<strong>${u.silverShards||0}</strong></div><div>Trophées<strong>${u.trophies||0}</strong></div><div>Parties<strong>${u.gamesPlayed||0}</strong></div><div>Victoires<strong>${u.gamesWon||0}</strong></div><div>Collection<strong>${d.ownedCount}/30</strong></div></div><h4>🧬 Collection (${d.ownedCount}/30)</h4><div class="collection-grid">${d.collection.filter(c=>c.owned).map(c=>`<article class="class-card"><div class="collection-character-art">${c.emoji}</div><b>${esc(c.name)}</b><small>${esc(c.rarity)}</small></article>`).join("")||"<p>Aucun personnage débloqué.</p>"}</div></div>`;}catch(e){out.textContent=e.message;}}
+$("publicPlayerSearchButton")?.addEventListener("click",searchPublicPlayer);$("publicPlayerSearch")?.addEventListener("keydown",e=>{if(e.key==="Enter")searchPublicPlayer();});
+
 
 function updateXpBar() {
   if (!currentUser) return;
@@ -610,7 +665,8 @@ $("adminButton")?.addEventListener(
       return;
     }
     applyAdminPanelVisibility();
-    openPage("adminPage");
+    openPage("adminPage"); loadPassAdminConfig(); loadAdminShopItems();
+    loadPassAdminConfig();
   }
 );
 
@@ -701,7 +757,9 @@ function renderClasses() {
     return;
   }
 
-  classesData.forEach((classe) => {
+  const visibleClasses=collectionOnlyOwned?classesData.filter(c=>(currentUser.classes||[]).includes(c.id)):classesData;
+  if(collectionOnlyOwned&&!visibleClasses.length){container.innerHTML="<div class=\"shop-card\"><h3>Ta collection est vide</h3><p>Achète un pack dans la boutique pour débloquer ton premier personnage.</p><button class=\"main-button\" id=\"collectionGoShop\">Ouvrir la boutique</button></div>";$("collectionGoShop")?.addEventListener("click",()=>$ ("shopButton")?.click());return;}
+  visibleClasses.forEach((classe) => {
     const owned =
       currentUser.classes.includes(
         classe.id
@@ -725,9 +783,8 @@ function renderClasses() {
 
     card.innerHTML = `
       <div>
-        <h3>
-          ${emoji} ${classe.name}
-        </h3>
+        <div class="collection-character-art" aria-hidden="true">${emoji}</div>
+        <h3>${esc(classe.name)}</h3>
 
         <p>
           🪙 ${classe.effectivePrice ?? classe.price}${classe.effectivePrice !== undefined && classe.effectivePrice !== classe.price ? ` <s>${classe.price}</s>` : ""}
@@ -889,7 +946,7 @@ async function loadQuests() {
 
   try {
     const response =
-      await fetch("/api/quests");
+      await fetch("/api/quests?pseudo="+encodeURIComponent(currentUser?.pseudo||""));
 
     const data =
       await response.json();
@@ -928,24 +985,15 @@ function renderQuests(quests) {
     return;
   }
 
+  const alert=$("questsAlert");
+  if(alert) alert.classList.toggle("hidden",!quests.some(q=>q.completed&&!q.claimed));
   quests.forEach((quest) => {
-    const card =
-      document.createElement("div");
-
-    card.className =
-      "quest-card";
-
-    card.innerHTML = `
-      <h3>${quest.title}</h3>
-
-      <p>${quest.description}</p>
-
-      <p>
-        ✨ ${quest.xp} XP
-        • 🪙 ${quest.coins} pièces
-      </p>
-    `;
-
+    const card=document.createElement("div");
+    card.className="quest-card";
+    const canClaim=Boolean(quest.completed&&!quest.claimed);
+    card.innerHTML=`<h3>${quest.completed?"✅ ":""}${esc(quest.title||"Quête")}</h3><p>${esc(quest.description||"")}</p><p>📈 ${Number(quest.progress||0)} / ${Number(quest.target||1)} · ✨ ${Number(quest.xp||0)} XP • 🪙 ${Number(quest.coins||0)} pièces</p><button class="secondary-button quest-claim-button" ${canClaim?"":"disabled"} data-quest-id="${esc(quest.id)}">${quest.claimed?"Récompense récupérée":canClaim?"! Récupérer la récompense":"En cours"}</button>`;
+    const button=card.querySelector("button");
+    if(canClaim)button.addEventListener("click",async()=>{button.disabled=true;try{const out=await apiJson("/api/quests/claim",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,questId:quest.id})});if(out.user){currentUser=out.user;saveCurrentUser();updateProfile();}await loadQuests();}catch(e){button.disabled=false;button.textContent=e.message;}});
     container.appendChild(card);
   });
 }
@@ -2495,7 +2543,7 @@ async function loadAdminV8(){
   if(uc)uc.innerHTML=`<h4>👥 ${d.users.length} joueur(s)</h4>`+d.users.map(u=>`<div class="admin-user-row"><span>${esc(u.icon||"🐺")} ${esc(u.pseudo)}</span><small>🪙${u.coins||0} • ✨${u.xp||0} • 🏆${u.trophies||0} • ${esc(u.rankedRank||"Bois")}</small><button class="secondary-button admin-select-user" data-pseudo="${esc(u.pseudo)}">Sélectionner</button></div>`).join("");uc?.querySelectorAll(".admin-select-user").forEach(b=>b.onclick=()=>{$("adminPlayerSearch").value=b.dataset.pseudo;$ ("adminSearchButton")?.click();});
  }catch(e){$("adminMessage").textContent="❌ "+e.message;}
 }
-$("adminButton")?.addEventListener("click",()=>setTimeout(loadAdminV8,50));
+$("adminButton")?.addEventListener("click",()=>setTimeout(async()=>{loadAdminV8();try{const d=await apiJson(`/api/pass?pseudo=${encodeURIComponent(currentUser.pseudo)}`);$("adminPassPrice").value=d.config.price||0;$("adminPremiumPrice").value=d.config.premiumPrice||0;$("adminPassXp").value=d.config.xpPerTier||500;}catch{}},50));
 $("adminRewardType")?.addEventListener("change",()=>{});
 
 
@@ -2651,6 +2699,26 @@ socket.on("halloweenChallengeUpdated",renderHalloweenChallenge);socket.on("hallo
 /* CHAT */
 $("chatEnabledToggle")?.addEventListener("change",async()=>{try{const d=await apiJson("/api/settings/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,chatEnabled:$ ("chatEnabledToggle").checked})});currentUser=d.user;saveCurrentUser();}catch(e){alert("❌ "+e.message);}});
 
+
+$("adminGiveShards")?.addEventListener("click",async()=>{const pseudo=$("adminShardTarget").value.trim(),amount=Number($("adminShardAmount").value||0);const msg=$("adminShardMessage");if(!pseudo||!Number.isInteger(amount)||amount<1){msg.textContent="Indique un pseudo et un nombre d’éclats supérieur à zéro.";return;}try{const d=await apiJson("/api/admin/give-shards",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser.pseudo,targetPseudo:pseudo,amount})});msg.textContent=d.message;}catch(e){msg.textContent=e.message;}});
+async function loadEventsPage(){const c=$("eventsList");if(!c)return;c.textContent="Chargement…";try{const d=await apiJson("/api/events");const events=d.events||[];c.innerHTML=events.map(e=>{const state=e.active?"En cours":Number(e.startAt)>Date.now()?`Commence dans ${Math.ceil((Number(e.startAt)-Date.now())/3600000)} h`:"Terminé";return `<article class="event-card shop-card"><h3>🎪 ${esc(e.name)}</h3><p>${esc(state)}</p><p>${e.active?"Fin : "+new Date(e.endAt).toLocaleString("fr-FR"):Number(e.startAt)>Date.now()?"Début : "+new Date(e.startAt).toLocaleString("fr-FR"):"Événement terminé"}</p><p>Récompenses : ${(e.rewards||[]).map(r=>`${r.points||0} points`).join(" · ")||"À découvrir"}</p>${e.active?'<button class="main-button" data-event-play>🎮 Jouer</button>':""}</article>`;}).join("")||"<p>Aucun événement n’est programmé pour le moment.</p>";c.querySelectorAll("[data-event-play]").forEach(b=>b.onclick=()=>{$("playButton")?.click();});}catch(e){c.textContent="Impossible de charger les événements : "+e.message;}}
+$("eventsButton")?.addEventListener("click",()=>{openPage("eventsPage");loadEventsPage();});
+function initDinoGame(){
+ const player=$("dinoPlayer"),obstacle=$("dinoObstacle"),track=$("dinoTrack"),scoreEl=$("dinoScore");if(!player||!obstacle||!track)return;
+ let jumping=false,score=0,active=false,speed=1.8,obstacleTimer=null,coinTimer=null,collisionTimer=null,coins=0,runId=0;
+ player.textContent="🦖";player.style.transform="scaleX(1)";obstacle.textContent="🌵";
+ const visible=()=>$("maintenanceScreen")&&!$("maintenanceScreen").classList.contains("hidden");
+ const reset=()=>{score=0;coins=0;scoreEl.textContent="0";track.querySelectorAll(".dino-coin").forEach(x=>x.remove());obstacle.classList.remove("dino-moving","dino-fast");obstacle.style.animationDuration="";obstacle.style.right="-45px";speed=1.8;jumping=false;player.classList.remove("dino-jumping");active=false;clearInterval(obstacleTimer);clearInterval(coinTimer);clearInterval(collisionTimer);obstacleTimer=coinTimer=collisionTimer=null;};
+ const spawnObstacle=()=>{if(!active||!visible())return;obstacle.style.animation="none";void obstacle.offsetWidth;obstacle.style.animation=`dinoMove ${speed}s linear infinite`;obstacle.classList.add("dino-moving");};
+ const start=()=>{if(active)return;active=true;runId++;spawnObstacle();obstacleTimer=setInterval(()=>{if(!active)return;score++;scoreEl.textContent=String(score);speed=Math.max(.62,1.8-score*.008);obstacle.style.animationDuration=speed+"s";if(score%8===0){const coin=document.createElement("span");coin.className="dino-coin";coin.textContent="🪙";coin.style.right="-35px";track.appendChild(coin);coin.style.animationDuration=Math.max(.9,speed*1.2)+"s";}},1000);
+ coinTimer=setInterval(()=>{if(!active)return;const coin=document.createElement("span");coin.className="dino-coin";coin.textContent="🪙";track.appendChild(coin);},6500);
+ collisionTimer=setInterval(()=>{if(!active)return;const a=player.getBoundingClientRect();const o=obstacle.getBoundingClientRect();const hit=!(a.right-10<o.left+8||a.left+10>o.right-8||a.bottom-4<o.top+8||a.top+8>o.bottom-3);if(hit&&!jumping){active=false;clearInterval(obstacleTimer);clearInterval(coinTimer);clearInterval(collisionTimer);alert("💥 Aïe ! Tu as touché un cactus. Score remis à zéro, recommence !");reset();return;}track.querySelectorAll(".dino-coin").forEach(coin=>{const r=coin.getBoundingClientRect();if(!(a.right<r.left||a.left>r.right||a.bottom<r.top||a.top>r.bottom)){coin.remove();coins++;if(currentUser&&currentUser.pseudo){apiJson("/api/dino/coin",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,amount:1})}).then(d=>{currentUser=d.user;saveCurrentUser();updateProfile();}).catch(()=>{});}else{coin.textContent="🪙";} }});},50);
+ };
+ const jump=()=>{if(!jumping){if(!active)start();jumping=true;player.classList.add("dino-jumping");setTimeout(()=>{player.classList.remove("dino-jumping");jumping=false;},550);}};
+ $("dinoJump")?.addEventListener("click",jump);track.addEventListener("click",e=>{if(e.target.classList.contains("dino-coin"))return;jump();});document.addEventListener("keydown",e=>{if((e.code==="Space"||e.code==="ArrowUp")&&visible()){e.preventDefault();jump();}});
+}
+initDinoGame();
+
 /* BOUTIQUE */
 async function loadShopV8(){
  const c=$("shopList");if(!c||!currentUser)return;c.textContent="Chargement...";
@@ -2658,15 +2726,16 @@ async function loadShopV8(){
   const d=await apiJson("/api/shop"), now=Date.now(), boosts=currentUser.boosts||{};
   const left=id=>Math.max(0,Number(boosts[id+"_until"]||0)-now);
   const label=id=>{const ms=left(id);return ms>0?`<span class="boost-active">✦ X2 actif encore ${Math.ceil(ms/60000)} min</span>`:"";};
-  let html=`<h3>🛒 Boutique normale</h3>`;
-  html+=(d.items||[]).map(i=>{const affordable=Number(currentUser.coins||0)>=Number(i.price||0);return `<div class="shop-card"><h3>🛒 ${esc(i.name)}</h3><p>${esc(i.description||"")}</p><p><span class="coin-icon"></span> ${i.price}</p>${i.id!=="blood_quarter"?label(i.id):""}<button class="main-button shop-buy" data-id="${esc(i.id)}" ${affordable?"":"disabled"}>${affordable?"Acheter":"Pas assez de pièces"}</button></div>`;}).join("");
+  let html=`<h3>🛒 Articles et bonus</h3>`;
+  const rarityNames={rare:"Pack rare",super_rare:"Pack super rare",epique:"Pack épique",legendaire:"Pack légendaire",mythique:"Pack mythique"};
+  html+=(d.items||[]).map(i=>{const affordable=Number(currentUser.coins||0)>=Number(i.price||0);const reward=i.reward||{};const pack=i.type&&i.type!=="article";const contents=[reward.coins?`${reward.coins} pièces`:"",reward.xp?`${reward.xp} XP`:"",reward.silverShards?`${reward.silverShards} éclats`:"",reward.classId?`Personnage : ${reward.classId}`:"",reward.title?`Titre : ${reward.title}`:""].filter(Boolean).join(" · ");return `<div class="shop-card ${pack?"pack-card pack-"+esc(i.type):""}"><div class="pack-rarity">${pack?esc(rarityNames[i.type]||"Pack"):"ARTICLE"}</div><h3>${pack?"🎁":"🛒"} ${esc(i.name)}</h3><p>${esc(i.description||contents)}</p><p><span class="coin-icon"></span> ${i.price}</p>${i.id!=="blood_quarter"?label(i.id):""}<button class="main-button shop-buy" data-id="${esc(i.id)}" ${affordable?"":"disabled"}>${affordable?"Acheter":"Pas assez de pièces"}</button></div>`;}).join("");
   if(d.halloween?.active){
     const h=await apiJson(`/api/halloween/shop?pseudo=${encodeURIComponent(currentUser.pseudo)}`);
     const hb=await apiJson(`/api/halloween/boxes?pseudo=${encodeURIComponent(currentUser.pseudo)}`);
     html+=`<div class="halloween-boxes"><div class="halloween-box-intro"><h3>🎃 Boîtes Halloween</h3><p>Une boîte peut tomber après chaque partie pendant Halloween. Clique sur une boîte que tu possèdes pour l'ouvrir.</p></div><div class="halloween-box-grid"><div class="wolf-box" data-box="haunted"><div class="wolf-box-lid">🐺</div><div class="wolf-box-body">🎃</div><span>Boîte hantée</span><b class="box-count">${hb.boxes.haunted||0}</b><button class="main-button halloween-box-open" data-box="haunted">Ouvrir</button></div><div class="wolf-box wolf-box-delay" data-box="cursed"><div class="wolf-box-lid">🐺</div><div class="wolf-box-body">🦇</div><span>Boîte maudite</span><b class="box-count">${hb.boxes.cursed||0}</b><button class="main-button halloween-box-open" data-box="cursed">Ouvrir</button></div><div class="wolf-box wolf-box-delay2" data-box="nocturnal"><div class="wolf-box-lid">🐺</div><div class="wolf-box-body">👻</div><span>Boîte nocturne</span><b class="box-count">${hb.boxes.nocturnal||0}</b><button class="main-button halloween-box-open" data-box="nocturnal">Ouvrir</button></div></div><p class="halloween-box-drop-info">🎲 À chaque partie Halloween terminée : une chance de recevoir une boîte.</p></div><div class="halloween-shop"><h2>🎃 Boutique Halloween — Semaine ${h.week}</h2><p class="halloween-candy-balance">🍬 Bonbons : <b>${h.candy}</b></p><p>Les bonbons se gagnent pendant les parties Halloween : 10 en jouant, 25 en gagnant.</p><div class="cards-list">${(h.items||[]).map(i=>{const ok=Number(h.candy||0)>=Number(i.price||0);return `<div class="shop-card halloween-shop-card"><h3>🎃 ${esc(i.name)}</h3><p>${esc(i.description)}</p><p>🍬 <b>${i.price}</b> bonbons</p><button class="main-button halloween-buy" data-id="${esc(i.id)}" ${ok?"":"disabled"}>${ok?"Échanger":"Pas assez de bonbons"}</button></div>`;}).join("")}</div></div>`;
   }
   c.innerHTML=html;
-  c.querySelectorAll(".shop-buy").forEach(b=>b.onclick=async()=>{try{const x=await apiJson("/api/shop/buy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,itemId:b.dataset.id})});currentUser=x.user;saveCurrentUser();updateProfile();loadShopV8();alert("✅ "+x.message);}catch(e){alert("❌ "+e.message);}});
+  c.querySelectorAll(".shop-buy").forEach(b=>b.onclick=async()=>{try{const x=await apiJson("/api/shop/buy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,itemId:b.dataset.id})});currentUser=x.user;saveCurrentUser();updateProfile();loadShopV8();if(x.collectionCharacter)showPackReveal(x.collectionCharacter);else alert("✅ "+x.message);}catch(e){alert("❌ "+e.message);}});
   c.querySelectorAll(".halloween-buy").forEach(b=>b.onclick=async()=>{try{const x=await apiJson("/api/halloween/shop/buy",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pseudo:currentUser.pseudo,itemId:b.dataset.id})});currentUser=x.user;saveCurrentUser();updateProfile();loadShopV8();alert("🍬 "+x.message);}catch(e){alert("❌ "+e.message);}});  c.querySelectorAll(".halloween-box-open").forEach(b=>b.onclick=()=>openHalloweenBoxAnimated(b.dataset.box));
  }catch(e){c.textContent="❌ "+e.message;}
 }
@@ -2983,3 +3052,13 @@ socket.on("nightStepStarted",d=>renderGamePhaseV19("night",d));
 socket.on("dayStarted",d=>renderGamePhaseV19("day",d));
 socket.on("voteUpdate",d=>{const x=$("gameTimer");if(x&&d?.required)x.textContent=`🗳️ ${d.count}/${d.required} votes enregistrés`;});
 setInterval(()=>{ if(currentUser) updateProfile(); },15000);
+
+// Outils d'administration pour la collection et les liens d'informations.
+(async()=>{try{const catalog=await apiJson("/api/collection/catalog");const sel=$("adminCharacterId");if(sel)sel.innerHTML=catalog.catalog.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${esc(c.rarity)}</option>`).join("");}catch(_){}})();
+$("adminGiveCharacter")?.addEventListener("click",async()=>{const m=$("adminCharacterMessage");try{const d=await apiJson("/api/admin/give-character",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser?.pseudo,targetPseudo:$("adminCharacterTarget")?.value,characterId:$("adminCharacterId")?.value})});if(m)m.textContent=d.message;}catch(e){if(m)m.textContent=e.message;}});
+$("adminAddInfoLink")?.addEventListener("click",async()=>{const m=$("adminInfoLinkMessage");try{const d=await apiJson("/api/admin/info-links",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({adminPseudo:currentUser?.pseudo,label:$("adminInfoLinkLabel")?.value,url:$("adminInfoLinkUrl")?.value})});if(m)m.textContent=d.message;$("adminInfoLinkLabel").value="";$("adminInfoLinkUrl").value="";}catch(e){if(m)m.textContent=e.message;}});
+
+async function loadPublicInfoLinks(){const box=$("infoLinksPublic");if(!box)return;try{const d=await apiJson("/api/info-links");box.innerHTML=(d.links||[]).map(x=>`<div class="shop-card"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.label)}</a></div>`).join("")||"<p>Aucun lien pour le moment.</p>";}catch(e){box.textContent=e.message;}}
+$("updatesButton")?.addEventListener("click",loadPublicInfoLinks);
+
+function showPackReveal(character){const old=document.getElementById("packRevealOverlay");old?.remove();const el=document.createElement("div");el.id="packRevealOverlay";el.className="pack-reveal-overlay";el.innerHTML=`<div class="pack-reveal-card"><div class="pack-reveal-rays"></div><p>🎉 PERSONNAGE DÉBLOQUÉ !</p><div class="pack-reveal-art">${character.emoji||"✨"}</div><h2>${esc(character.name)}</h2><strong>${esc(character.rarity)}</strong><p>Il a été ajouté à ta collection !</p><button class="main-button" id="packRevealClose">Super !</button></div>`;document.body.appendChild(el);requestAnimationFrame(()=>el.classList.add("visible"));el.querySelector("#packRevealClose").onclick=()=>el.remove();}
