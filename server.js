@@ -1,5 +1,5 @@
 /* =========================================
-   LOUP-GAROU V7
+   LOUP-GAROU V0.32
    SERVER.JS
 ========================================= */
 
@@ -73,12 +73,16 @@ function defaultDatabase() {
   return {
     users: [],
     rooms: [],
+    customShopItems: [],
+    customEvents: [],
+    passConfig: { price: 1200, premiumPrice: 2400, xpPerTier: 500, rewards: Array.from({length: 20}, (_, i) => ({ tier: i + 1, free: { coins: 50 + i * 10 }, paid: { coins: 100 + i * 20 }, premium: { coins: 150 + i * 25 } })) },
+    earlyAccess: { enabled: true, code: "", url: "" },
     friendships: [],
     friendRequests: [],
     messages: [],
     notifications: [],
     announcements: {
-      text: "Bienvenue dans Loup-Garou V7 🐺"
+      text: "Bienvenue dans Loup-Garou V0.32 🐺"
     },
     comments: [],
     bloodMoonProgress: {},
@@ -109,6 +113,10 @@ function defaultDatabase() {
 function mergeDatabase(database) {
   const merged = { ...defaultDatabase(), ...(database || {}) };
   merged.announcements = { ...defaultDatabase().announcements, ...(database?.announcements || {}) };
+  merged.passConfig = { ...defaultDatabase().passConfig, ...(database?.passConfig || {}) };
+  merged.passConfig.xpPerTier = Math.max(100, Number(merged.passConfig.xpPerTier || 500));
+  merged.passConfig.rewards = Array.isArray(merged.passConfig.rewards) ? merged.passConfig.rewards : defaultDatabase().passConfig.rewards;
+  merged.earlyAccess = { ...defaultDatabase().earlyAccess, ...(database?.earlyAccess || {}) };
   merged.globalBoosts = { ...defaultDatabase().globalBoosts, ...(database?.globalBoosts || {}) };
   merged.halloweenEvent = { ...defaultDatabase().halloweenEvent, ...(database?.halloweenEvent || {}) };
   merged.v26Release = { ...defaultDatabase().v26Release, ...(database?.v26Release || {}) };
@@ -553,6 +561,31 @@ const CLASSES = [
 ];
 
 
+// Collection de personnages : indépendante des classes de gameplay. 30 variantes, 6 personnages x 5 raretés.
+const COLLECTION_CATALOG = (() => {
+ const names=["Sorcière","Loup-garou","Cupidon","Citrouille","Voyante","Géant de pierre"];
+ const rarities=[
+  {id:"rare",label:"Rare",price:500,weight:100/6},
+  {id:"super_rare",label:"Super rare",price:1000,weight:100/6},
+  {id:"epique",label:"Épique",price:2000,weight:100/6},
+  {id:"legendaire",label:"Légendaire",price:4000,weight:100/6},
+  {id:"mythique",label:"Mythique",price:8000,weight:100/6}
+ ];
+ return rarities.flatMap(r=>names.map((name,i)=>({id:`${r.id}_${["witch","wolf","cupid","pumpkin","seer","stone"][i]}`,name:`${name} ${r.label.toLowerCase()}`,character:name,rarity:r.label,rarityId:r.id,price:r.price,dropPercent:r.weight,emoji:["🧙‍♀️","🐺","💘","🎃","🔮","🗿"][i]})));
+})();
+
+// Packs de départ V0.32 : enregistrés comme articles modifiables dans le panel admin.
+if (!Array.isArray(db.customShopItems) || db.customShopItems.length === 0) {
+  db.customShopItems = [
+    {id:"pack_rare",name:"Pack rare",type:"rare",price:250,description:"Un personnage rare pour ta collection.",reward:{coins:40,xp:20,silverShards:0,classId:"",title:""}},
+    {id:"pack_super_rare",name:"Pack super rare",type:"super_rare",price:500,description:"Débloque un personnage spécial.",reward:{coins:75,xp:40,silverShards:2,classId:"",title:""}},
+    {id:"pack_epique",name:"Pack épique",type:"epique",price:900,description:"Un personnage épique et des bonus.",reward:{coins:125,xp:70,silverShards:5,classId:"",title:""}},
+    {id:"pack_legendaire",name:"Pack légendaire",type:"legendaire",price:1500,description:"Un personnage légendaire pour ta collection.",reward:{coins:200,xp:100,silverShards:10,classId:"",title:""}},
+    {id:"pack_mythique",name:"Pack mythique",type:"mythique",price:2500,description:"Un personnage mythique et de grosses récompenses.",reward:{coins:300,xp:150,silverShards:20,classId:"",title:""}}
+  ];
+  saveDatabase();
+}
+
 /* =========================================
    QUÊTES NORMALES
 ========================================= */
@@ -583,6 +616,28 @@ const QUESTS = [
   { id:"level_5", title:"Montée en puissance", description:"Atteins le niveau 5.", target:5, stat:"level", xp:300, coins:200 },
   { id:"level_10", title:"Vétéran", description:"Atteins le niveau 10.", target:10, stat:"level", xp:750, coins:500 }
 ];
+
+
+// 500 quêtes supplémentaires générées à partir des statistiques réellement suivies.
+// Elles restent persistantes via les identifiants stables et utilisent le système de réclamation existant.
+const QUEST_STAT_POOLS = [
+  {stat:"gamesPlayed",label:"parties jouées",xp:25,coins:15},
+  {stat:"gamesWon",label:"victoires",xp:45,coins:25},
+  {stat:"rankedPlayed",label:"parties classées jouées",xp:35,coins:20},
+  {stat:"rankedWon",label:"victoires classées",xp:55,coins:30},
+  {stat:"specialRoles",label:"parties avec un rôle spécial",xp:30,coins:20},
+  {stat:"survivals",label:"survies jusqu’à la fin",xp:40,coins:25},
+  {stat:"wolfWins",label:"victoires dans le camp des Loups-Garous",xp:50,coins:30},
+  {stat:"friendsAdded",label:"amis ajoutés",xp:20,coins:10},
+  {stat:"trophies",label:"trophées atteints",xp:25,coins:15},
+  {stat:"level",label:"niveaux atteints",xp:50,coins:35}
+];
+for(let i=1;i<=500;i++){
+  const pool=QUEST_STAT_POOLS[(i-1)%QUEST_STAT_POOLS.length];
+  const tier=Math.floor((i-1)/QUEST_STAT_POOLS.length)+1;
+  const target=Math.max(2,tier*5+((i-1)%5));
+  QUESTS.push({id:`extra_quest_${String(i).padStart(3,"0")}`,title:`Défi du village #${i}`,description:`Atteins ${target} ${pool.label}.`,target,stat:pool.stat,xp:Math.min(5000,pool.xp*tier),coins:Math.min(3000,pool.coins*tier)});
+}
 
 
 /* =========================================
@@ -890,6 +945,9 @@ function applyReward(
 ========================================= */
 function ensureUserState(user) {
   if (!user) return;
+  user.silverShards = Math.max(0, Number(user.silverShards || 0));
+  user.passClaims = Array.isArray(user.passClaims) ? user.passClaims : [];
+  user.ownedPass = ["free", "paid", "premium"].includes(user.ownedPass) ? user.ownedPass : "free";
   user.questStats = user.questStats || {};
   user.claimedQuests = user.claimedQuests || [];
   user.rankedSeason = user.rankedSeason || getRankedSeasonKey();
@@ -1575,6 +1633,10 @@ app.get("/api/profile/:pseudo", (req, res) => {
   }
 });
 
+
+app.get("/api/collection/catalog",(req,res)=>res.json({catalog:COLLECTION_CATALOG}));
+app.get("/api/collection",(req,res)=>{const u=findUser(req.query.pseudo||"");if(!u)return res.status(404).json({message:"Compte introuvable."});u.collectionCharacters=Array.isArray(u.collectionCharacters)?u.collectionCharacters:[];res.json({catalog:COLLECTION_CATALOG,owned:u.collectionCharacters,ownedCount:u.collectionCharacters.length,total:30});});
+app.get("/api/players/:pseudo",(req,res)=>{const u=findUser(req.params.pseudo);if(!u)return res.status(404).json({message:"Joueur introuvable."});const safe=publicUser(u);const owned=Array.isArray(u.collectionCharacters)?u.collectionCharacters:[];delete safe.email; delete safe.id; res.json({user:safe,collection:COLLECTION_CATALOG.map(c=>({...c,owned:owned.includes(c.id)})),ownedCount:owned.length,total:30});});
 
 /* =========================================
    API : ÉTAT DU STOCKAGE
@@ -3081,6 +3143,20 @@ app.post("/api/chat/respond",(req,res)=>{const r=db.friendRequests.find(x=>x.id=
 app.post("/api/chat/send-safe",(req,res)=>{const from=findUser(req.body.fromPseudo),to=findUser(req.body.toPseudo);if(!from||!to||!areFriends(from.pseudo,to.pseudo))return res.status(403).json({message:"Le chat est réservé aux amis."});if(from.chatEnabled===false||to.chatEnabled===false)return res.status(403).json({message:"Le chat est désactivé."});const allowed=Array.isArray(from.chatAllowed)&&Array.isArray(to.chatAllowed)&&from.chatAllowed.includes(normalizePseudo(to.pseudo))&&to.chatAllowed.includes(normalizePseudo(from.pseudo)); if(!allowed)return res.status(403).json({message:"Vous devez accepter la demande de chat."});const msg={id:createId(),from:from.pseudo,to:to.pseudo,text:filterChatText(req.body.text),createdAt:Date.now()};db.messages.push(msg);saveDatabase();const sid=onlineUsers.get(normalizePseudo(to.pseudo));if(sid)io.to(sid).emit("chatMessage",msg);res.json({message:msg});});
 app.post("/api/settings/chat",(req,res)=>{const u=findUser(req.body.pseudo);if(!u)return res.status(404).json({message:"Utilisateur introuvable."});u.chatEnabled=req.body.chatEnabled!==false;saveDatabase();res.json({message:"Paramètre du chat enregistré.",user:publicUser(u)});});
 
+// PASS SAISONNIER V0.32 — progression et achats enregistrés côté serveur
+function passTierFor(user, cfg){ return Math.max(0, Math.floor(Math.max(0, Number(user.xp||0)) / Math.max(100, Number(cfg.xpPerTier||500)))); }
+function passPayload(user){
+  ensureUserState(user); const cfg=db.passConfig||defaultDatabase().passConfig; const tier=passTierFor(user,cfg); const xp= Math.max(0,Number(user.xp||0)); const xpPerTier=Math.max(100,Number(cfg.xpPerTier||500));
+  return { config:cfg, xp, tier, xpIntoTier:xp%xpPerTier, xpPerTier, silverShards:Number(user.silverShards||0), ownedPass:user.ownedPass||"free", claimed:Array.isArray(user.passClaims)?user.passClaims:[], rewards:cfg.rewards.map((r,i)=>({...r,tier:Number(r.tier||i+1),unlocked:tier>=Number(r.tier||i+1)})) };
+}
+app.get('/api/pass',(req,res)=>{const u=findUser(req.query.pseudo);if(!u)return res.status(404).json({message:'Compte introuvable.'});res.json(passPayload(u));});
+app.post('/api/pass/buy',(req,res)=>{const u=findUser(req.body.pseudo);if(!u)return res.status(404).json({message:'Compte introuvable.'});ensureUserState(u);const type=req.body.type==='premium'?'premium':'paid';const cfg=db.passConfig||defaultDatabase().passConfig;const price=Math.max(0,Number(type==='premium'?cfg.premiumPrice:cfg.price));u.silverShards=Number(u.silverShards||0);if(u.silverShards<price)return res.status(400).json({message:'Pas assez d’éclats d’argent.'});u.silverShards-=price;u.ownedPass=type;saveDatabase();emitProfile(u);res.json({message:'Pass débloqué !',user:publicUser(u),pass:passPayload(u)});});
+app.post('/api/pass/claim',(req,res)=>{const u=findUser(req.body.pseudo);if(!u)return res.status(404).json({message:'Compte introuvable.'});ensureUserState(u);const cfg=db.passConfig||defaultDatabase().passConfig;const tier=Number(req.body.tier);const row=(cfg.rewards||[]).find((r,i)=>Number(r.tier||i+1)===tier);if(!row)return res.status(404).json({message:'Palier introuvable.'});if(passTierFor(u,cfg)<tier)return res.status(400).json({message:'Ce palier n’est pas encore débloqué.'});u.passClaims=Array.isArray(u.passClaims)?u.passClaims:[];const lane=req.body.lane==='premium'?'premium':req.body.lane==='paid'?'paid':'free';if(lane!=='free'&&u.ownedPass==='free')return res.status(403).json({message:'Achète ce Pass pour récupérer cette récompense.'});const key=`${lane}:${tier}`;if(u.passClaims.includes(key))return res.status(400).json({message:'Récompense déjà récupérée.'});const reward=row[lane]||row.free||{};u.coins=Number(u.coins||0)+Math.max(0,Number(reward.coins||0));u.xp=Number(u.xp||0)+Math.max(0,Number(reward.xp||0));u.silverShards=Number(u.silverShards||0)+Math.max(0,Number(reward.silverShards||0));u.passClaims.push(key);updateLevel(u);saveDatabase();emitProfile(u);res.json({message:'Récompense récupérée !',user:publicUser(u),pass:passPayload(u)});});
+app.post('/api/admin/pass-config',(req,res)=>{if(!requireFullAdmin(req,res))return;const price=Math.max(0,Number(req.body.price||0)),premiumPrice=Math.max(0,Number(req.body.premiumPrice||0)),xpPerTier=Math.max(100,Number(req.body.xpPerTier||500));let rewards=req.body.rewards;if(typeof rewards==='string'){try{rewards=JSON.parse(rewards)}catch{return res.status(400).json({message:'Récompenses invalides. Utilise les champs en français.'})}}if(!Array.isArray(rewards))return res.status(400).json({message:'La liste des récompenses est invalide.'});db.passConfig={price,premiumPrice,xpPerTier,rewards:rewards.slice(0,100).map((r,i)=>({tier:Math.max(1,Number(r.tier||i+1)),free:{coins:Math.max(0,Number(r.free?.coins||0)),xp:Math.max(0,Number(r.free?.xp||0)),silverShards:Math.max(0,Number(r.free?.silverShards||0))},paid:{coins:Math.max(0,Number(r.paid?.coins||0)),xp:Math.max(0,Number(r.paid?.xp||0)),silverShards:Math.max(0,Number(r.paid?.silverShards||0))},premium:{coins:Math.max(0,Number(r.premium?.coins||0)),xp:Math.max(0,Number(r.premium?.xp||0)),silverShards:Math.max(0,Number(r.premium?.silverShards||0))}}))};saveDatabase();res.json({message:'Configuration du Pass enregistrée.',config:db.passConfig});});
+app.get('/api/early-access/info',(req,res)=>res.json({enabled:Boolean(db.earlyAccess?.enabled)}));
+app.post('/api/early-access/check',(req,res)=>{const code=String(req.body.code||'').trim();const cfg=db.earlyAccess||{};if(!cfg.enabled||!code||code.toUpperCase()!==String(cfg.code||'').trim().toUpperCase())return res.status(403).json({message:'Code invalide ou accès anticipé fermé.'});res.json({message:'Code accepté.',url:String(cfg.url||'')});});
+app.post('/api/admin/early-access',(req,res)=>{if(!requireFullAdmin(req,res))return;db.earlyAccess={enabled:req.body.enabled!==false,code:String(req.body.code||'').trim().slice(0,80),url:String(req.body.url||'').trim().slice(0,1000)};saveDatabase();res.json({message:'Accès anticipé enregistré.'});});
+
 const SHOP_ITEMS=[
   {id:"double_coins",name:"x2 pièces",price:200,description:"x2 pièces pendant 10 minutes.",durationMs:10*60*1000},
   {id:"double_xp",name:"x2 XP",price:200,description:"x2 XP pendant 10 minutes.",durationMs:10*60*1000},
@@ -3088,7 +3164,7 @@ const SHOP_ITEMS=[
 ];
 app.get("/api/shop",(req,res)=>{
   const st=getBloodMoonStatus();
-  const items=[...SHOP_ITEMS];
+  const items=[...SHOP_ITEMS,...(Array.isArray(db.customShopItems)?db.customShopItems:[])];
   if(st.active)items.push({id:"blood_quarter",name:"Quart de Lune de Sang",price:500,description:"Ajoute un quart à ta progression de Lune de Sang."});
   const halloween=getHalloweenStatus();
   res.json({items,halloween:{active:Boolean(halloween.active),week:halloween.week,candy:0,shopItems:HALLOWEEN_SHOP_ITEMS}});
@@ -3134,17 +3210,49 @@ app.post("/api/shop/buy",(req,res)=>{
   ensureUserState(u);
   const st=getBloodMoonStatus();
   const id=req.body.itemId;
-  const item=[...SHOP_ITEMS,...(st.active?[{id:"blood_quarter",name:"Quart de Lune de Sang",price:500}]:[])].find(x=>x.id===id);
+  const item=[...SHOP_ITEMS,...(Array.isArray(db.customShopItems)?db.customShopItems:[]),...(st.active?[{id:"blood_quarter",name:"Quart de Lune de Sang",price:500}]:[])].find(x=>x.id===id);
   if(!item)return res.status(404).json({message:"Article indisponible."});
   if(Number(u.coins||0)<item.price)return res.status(400).json({message:"Pas assez de pièces."});
+  const requestedPackRarity={rare:"rare",super_rare:"super_rare",epique:"epique",legendaire:"legendaire",mythique:"mythique"}[item.type];
+  if(requestedPackRarity){const remaining=COLLECTION_CATALOG.filter(c=>c.rarityId===requestedPackRarity&&!(u.collectionCharacters||[]).includes(c.id));if(!remaining.length)return res.status(400).json({message:"Tu possèdes déjà tous les personnages de cette rareté !"});}
   u.coins-=item.price;
   const now=Date.now();
+  let awardedCollectionCharacter=null;
   if(id==="blood_quarter"){ addBloodMoonQuarter(u); }
+  else if((db.customShopItems||[]).some(x=>x.id===id)){
+    const reward=item.reward||{};
+    const packRarity={rare:"rare",super_rare:"super_rare",epique:"epique",legendaire:"legendaire",mythique:"mythique"}[item.type];
+    if(packRarity){
+      const pool=COLLECTION_CATALOG.filter(c=>c.rarityId===packRarity);
+      const available=pool.filter(c=>!(u.collectionCharacters||[]).includes(c.id));
+      const drawFrom=available.length?available:pool;
+      const won=drawFrom[Math.floor(Math.random()*drawFrom.length)];
+      u.collectionCharacters=Array.isArray(u.collectionCharacters)?u.collectionCharacters:[];
+      if(!u.collectionCharacters.includes(won.id))u.collectionCharacters.push(won.id);
+      reward.collectionCharacter=won; awardedCollectionCharacter=won;
+    }
+    u.coins=Number(u.coins||0)+Math.max(0,Number(reward.coins||0));
+    u.xp=Number(u.xp||0)+Math.max(0,Number(reward.xp||0));
+    u.silverShards=Number(u.silverShards||0)+Math.max(0,Number(reward.silverShards||0));
+    if(reward.title){u.titles=u.titles||["Nouveau Villageois"];if(!u.titles.includes(String(reward.title)))u.titles.push(String(reward.title));}
+    if(!packRarity&&reward.classId){const classId=String(reward.classId).trim();if(CLASSES.some(c=>c.id===classId)){u.classes=Array.isArray(u.classes)?u.classes:[];if(!u.classes.includes(classId))u.classes.push(classId);}}
+    updateLevel(u);
+  }
   else { const key=`${id}_until`; const currentUntil=Number(u.boosts[key]||0); u.boosts[key]=Math.max(currentUntil,now)+item.durationMs; }
   saveDatabase(); emitProfile(u);
-  res.json({message:id==="blood_quarter"?"Quart de Lune de Sang acheté !":"Achat effectué : bonus actif pendant 10 minutes !",user:publicUser(u),boosts:u.boosts});
+  res.json({message:awardedCollectionCharacter?`Personnage obtenu : ${awardedCollectionCharacter.name} !`:(id==="blood_quarter"?"Quart de Lune de Sang acheté !":((db.customShopItems||[]).some(x=>x.id===id)?`Achat réussi : ${item.name} et ses récompenses ont été ajoutés !`:`Bonus acheté : ${item.name} est actif pendant 10 minutes !`)),user:publicUser(u),collectionCharacter:awardedCollectionCharacter,boosts:u.boosts});
 });
 
+
+app.post("/api/admin/give-character",(req,res)=>{if(!requireFullAdmin(req,res))return;const target=findUser(String(req.body.targetPseudo||""));if(!target)return res.status(404).json({message:"Joueur introuvable."});const character=COLLECTION_CATALOG.find(c=>c.id===String(req.body.characterId||""));if(!character)return res.status(400).json({message:"Personnage invalide."});target.collectionCharacters=Array.isArray(target.collectionCharacters)?target.collectionCharacters:[];if(!target.collectionCharacters.includes(character.id))target.collectionCharacters.push(character.id);saveDatabase();emitProfile(target);res.json({message:`${character.name} ajouté à la collection de ${target.pseudo}.`,user:publicUser(target),character});});
+app.post("/api/admin/info-links",(req,res)=>{if(!requireFullAdmin(req,res))return;const label=String(req.body.label||"").trim().slice(0,80);const url=String(req.body.url||"").trim().slice(0,1000);if(!label||!/^https?:\/\//i.test(url))return res.status(400).json({message:"Indique un nom et un lien http(s) valide."});db.infoLinks=Array.isArray(db.infoLinks)?db.infoLinks:[];db.infoLinks.push({id:`link_${Date.now()}`,label,url});saveDatabase();res.json({message:"Lien ajouté dans les informations.",links:db.infoLinks});});
+app.get("/api/info-links",(req,res)=>res.json({links:Array.isArray(db.infoLinks)?db.infoLinks:[]}));
+app.post("/api/admin/give-shards",(req,res)=>{if(!requireFullAdmin(req,res))return;const target=findUser(String(req.body.targetPseudo||""));if(!target)return res.status(404).json({message:"Joueur introuvable."});const amount=Math.floor(Number(req.body.amount||0));if(!Number.isFinite(amount)||amount<1||amount>1000000)return res.status(400).json({message:"Le nombre d’éclats doit être compris entre 1 et 1 000 000."});ensureUserState(target);target.silverShards=Number(target.silverShards||0)+amount;saveDatabase();emitProfile(target);res.json({message:`${amount} éclats d’argent donnés à ${target.pseudo}.`,user:publicUser(target)});});
+app.post("/api/dino/coin",(req,res)=>{const u=findUser(String(req.body.pseudo||""));if(!u)return res.status(404).json({message:"Compte introuvable."});ensureUserState(u);const amount=Math.max(1,Math.min(1,Math.floor(Number(req.body.amount||1))));u.coins=Number(u.coins||0)+amount;saveDatabase();emitProfile(u);res.json({message:"Pièce récupérée !",user:publicUser(u)});});
+app.post("/api/admin/shop-config",(req,res)=>{if(!requireFullAdmin(req,res))return;let items=req.body.items;if(typeof items==="string"){try{items=JSON.parse(items)}catch{return res.status(400).json({message:"JSON du catalogue invalide."})}}if(!Array.isArray(items))return res.status(400).json({message:"Le catalogue doit être une liste JSON."});db.customShopItems=items.slice(0,200).map((x,i)=>({id:String(x.id||`custom_${i+1}`).replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,60),name:String(x.name||`Article ${i+1}`).slice(0,80),type:["rare","super_rare","epique","legendaire","mythique"].includes(x.type)?x.type:"article",price:Math.max(0,Number(x.price||0)),description:String(x.description||"").slice(0,300),reward:{coins:Math.max(0,Number(x.reward?.coins||0)),xp:Math.max(0,Number(x.reward?.xp||0)),silverShards:Math.max(0,Number(x.reward?.silverShards||0)),classId:x.reward?.classId?String(x.reward.classId).slice(0,80):"",title:x.reward?.title?String(x.reward.title).slice(0,60):""}}));saveDatabase();res.json({message:"Catalogue et packs enregistrés.",items:db.customShopItems});});
+app.get("/api/admin/shop-config",(req,res)=>{if(!requireFullAdmin(req,res))return;res.json({items:db.customShopItems||[]});});
+app.post("/api/admin/event-config",(req,res)=>{if(!requireFullAdmin(req,res))return;const b=req.body;let rewards=b.rewards;if(typeof rewards==="string"){try{rewards=JSON.parse(rewards)}catch{return res.status(400).json({message:"JSON des récompenses invalide."})}}if(!Array.isArray(rewards))return res.status(400).json({message:"Les récompenses doivent être une liste JSON."});db.customEvents=db.customEvents||[];const event={id:String(b.id||`event_${Date.now()}`),name:String(b.name||"Événement du village").slice(0,80),startAt:Number(b.startAt||0),endAt:Number(b.endAt||0),pointsPerGame:Math.max(0,Number(b.pointsPerGame||0)),rewards:rewards.slice(0,50),updatedAt:Date.now()};const idx=db.customEvents.findIndex(e=>e.id===event.id);if(idx>=0)db.customEvents[idx]=event;else db.customEvents.push(event);saveDatabase();res.json({message:"Événement enregistré.",event,events:db.customEvents});});
+app.get("/api/events",(req,res)=>{const now=Date.now();res.json({events:(db.customEvents||[]).map(e=>({...e,active:Number(e.startAt)<=now&&(!Number(e.endAt)||Number(e.endAt)>=now),countdown:Math.max(0,Number(e.startAt||0)-now)}))});});
 app.post("/api/titles/equip",(req,res)=>{const u=findUser(req.body.pseudo);if(!u||!(u.titles||[]).includes(req.body.title))return res.status(400).json({message:"Titre indisponible."});u.equippedTitle=req.body.title;u.title=req.body.title;saveDatabase();res.json({message:"Titre équipé !",user:publicUser(u)});});
 
 
@@ -4226,7 +4334,7 @@ async function startServer() {
   try {
     await initializeExternalDatabase();
     server.listen(PORT, () => {
-      console.log(`🐺 Loup-Garou V7 lancé sur le port ${PORT}`);
+      console.log(`🐺 Loup-Garou V0.32 lancé sur le port ${PORT}`);
       if (externalDbReady) console.log("💾 Persistance active : PostgreSQL externe");
     });
   } catch (error) {
